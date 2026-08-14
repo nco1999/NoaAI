@@ -2,7 +2,7 @@ import { NextResponse } from "next/server";
 import { getCurrentUser, canCreateAssets } from "@/lib/auth/current-user";
 import { checkRateLimit } from "@/lib/ai/rate-limit";
 import { parseIconGenerationParams } from "@/lib/ai/icon-params";
-import { generateIconVariations, refineIconVariation } from "@/lib/ai/anthropic";
+import { generateIconVariations, refineIconVariation } from "@/lib/ai/icon-generation";
 
 export async function POST(request: Request) {
   const user = await getCurrentUser();
@@ -44,7 +44,7 @@ export async function POST(request: Request) {
         typeof b.refinementPrompt === "string" && b.refinementPrompt.trim()
           ? b.refinementPrompt.trim()
           : params.prompt;
-      const variation = await refineIconVariation(params, b.previousSvg, refinementPrompt);
+      const variation = await refineIconVariation(params, refinementPrompt);
       return NextResponse.json({ variations: [variation] });
     }
 

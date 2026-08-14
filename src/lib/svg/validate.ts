@@ -3,19 +3,21 @@ import { XMLParser } from "fast-xml-parser";
 import type { IconGenerationParams } from "@/lib/supabase/types";
 
 /**
- * Real structural validation for AI-generated icon SVGs, run server-side
- * before an SVG is ever returned to the client or saved to the library.
+ * Structural validation for icon SVGs, run server-side before an SVG is
+ * ever returned to the client or saved to the library. Icons are produced
+ * by lib/svg/vectorize.ts (deterministic raster-to-SVG tracing, not a
+ * language model authoring path data), so in practice this is mostly a
+ * defense-in-depth gate against bugs in that pipeline rather than against
+ * an unreliable model — there is no repair round-trip for icons; anything
+ * that fails here just gets the variation dropped.
  *
- * Findings are split into two buckets:
+ * Findings are split into two buckets so callers can log/handle them
+ * differently if needed:
  * - `securityErrors`: content that must never reach a browser (scripts,
- *   event handlers, external references, disallowed tags). These fail
- *   closed — the variation is dropped, never sent back to the model for a
- *   "fix" (asking an LLM to repair its own unsafe output is not a security
- *   boundary).
+ *   event handlers, external references, disallowed tags).
  * - `qualityErrors`: structural/geometric problems (wrong viewBox, element
  *   budget exceeded, coordinates far outside the canvas, wrong currentColor
- *   usage for the chosen style). These are worth one repair round-trip to
- *   the model.
+ *   usage for the chosen style).
  */
 
 export interface SvgValidationResult {
@@ -56,7 +58,11 @@ const COORD_ATTRS = new Set([
 ]);
 const OPACITY_ATTRS = new Set(["opacity", "fill-opacity", "stroke-opacity"]);
 const MIN_ELEMENTS = 1;
-const MAX_ELEMENTS = 18;
+// A traced icon can legitimately break into more disconnected regions than a
+// hand-authored one would (e.g. limbs, gaps between two figures), so this is
+// a generous sanity ceiling against a genuinely noisy/artifact-laden trace,
+// not a "keep it simple" nudge the way it would be for model-authored paths.
+const MAX_ELEMENTS = 60;
 const NUMBER_RE = /-?\d+(?:\.\d+)?/g;
 
 // Cheap raw-text pre-checks: catches the clearly malicious cases even if the
@@ -233,12 +239,6 @@ export function validateIconSvg(
     }
   } else if (literalColors.length === 0) {
     qualityErrors.push("Non-monochrome icon must use at least one literal color.");
-  }
-
-  if (params.style === "outline" && elementCount > 0 && fillValues.length > elementCount * 0.5) {
-    // Outline icons are stroke-driven; solid fills on most elements usually
-    // means the model produced a filled icon instead of an outline one.
-    qualityErrors.push("Outline style should rely on strokes (fill=\"none\"), not solid fills, on most elements.");
   }
 
   return {

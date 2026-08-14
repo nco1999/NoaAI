@@ -1,9 +1,9 @@
 import "server-only";
 
 /**
- * Deterministic, mechanical cleanup applied before validation. These are
- * fixes that don't need a model round-trip (unlike geometry/quality
- * issues, which go through the repair call in lib/ai/anthropic.ts).
+ * Deterministic, mechanical cleanup applied to SVG markup before validation
+ * (icons are vectorized from a generated image in lib/svg/vectorize.ts, not
+ * hand-authored by a model, so this is just tidying the vectorizer's output).
  */
 export function normalizeIconSvg(svg: string): string {
   let result = svg.trim();

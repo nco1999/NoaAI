@@ -34,22 +34,6 @@ export function IconPromptForm({
 }) {
   const [values, setValues] = useState<IconFormValues>(DEFAULT_FORM_VALUES);
 
-  function updateColor(index: number, color: string) {
-    setValues((v) => ({
-      ...v,
-      colors: v.colors.map((c, i) => (i === index ? color : c)),
-    }));
-  }
-
-  function addColor() {
-    if (values.colors.length >= 6) return;
-    setValues((v) => ({ ...v, colors: [...v.colors, DEFAULT_COLOR] }));
-  }
-
-  function removeColor(index: number) {
-    setValues((v) => ({ ...v, colors: v.colors.filter((_, i) => i !== index) }));
-  }
-
   return (
     <form
       onSubmit={(e) => {
@@ -71,53 +55,9 @@ export function IconPromptForm({
         />
       </div>
 
-      <div className="flex items-center gap-2">
-        <input
-          type="checkbox"
-          id="monochrome"
-          checked={values.monochrome}
-          onChange={(e) => setValues((v) => ({ ...v, monochrome: e.target.checked }))}
-        />
-        <label htmlFor="monochrome" className="text-sm font-medium">
-          מונוכרום (currentColor — ניתן להחלפת צבע בלי לפנות שוב ל‑AI)
-        </label>
-      </div>
-
-      {!values.monochrome && (
-        <div>
-          <label className="block text-sm font-medium">צבעים (עד 6)</label>
-          <div className="mt-1 flex flex-wrap items-center gap-2">
-            {values.colors.map((color, i) => (
-              <div key={i} className="flex items-center gap-1">
-                <input
-                  type="color"
-                  value={color}
-                  onChange={(e) => updateColor(i, e.target.value)}
-                  className="h-8 w-8 cursor-pointer rounded border border-neutral-300 dark:border-neutral-700"
-                />
-                {values.colors.length > 1 && (
-                  <button
-                    type="button"
-                    onClick={() => removeColor(i)}
-                    className="text-xs text-neutral-400 hover:text-red-600"
-                  >
-                    הסר
-                  </button>
-                )}
-              </div>
-            ))}
-            {values.colors.length < 6 && (
-              <button
-                type="button"
-                onClick={addColor}
-                className="rounded-lg border border-dashed border-neutral-300 px-2 py-1 text-xs text-neutral-500 hover:border-neutral-500 dark:border-neutral-700"
-              >
-                + צבע
-              </button>
-            )}
-          </div>
-        </div>
-      )}
+      <p className="rounded-lg bg-neutral-50 px-3 py-2 text-xs text-neutral-500 dark:bg-neutral-800 dark:text-neutral-400">
+        הצבע נקבע אחרי היצירה, ישירות על כל וריאציה (בלי לפנות שוב ל‑AI) — אין צורך לבחור אותו כאן.
+      </p>
 
       <div className="grid grid-cols-2 gap-4">
         <div>
@@ -154,7 +94,7 @@ export function IconPromptForm({
         </div>
 
         <div>
-          <label className="block text-sm font-medium">עובי קו: {values.strokeWidth}</label>
+          <label className="block text-sm font-medium">עובי קו (רלוונטי לסגנון קווי): {values.strokeWidth}</label>
           <input
             type="range"
             min={0.5}
@@ -163,7 +103,7 @@ export function IconPromptForm({
             value={values.strokeWidth}
             onChange={(e) => setValues((v) => ({ ...v, strokeWidth: Number(e.target.value) }))}
             className="mt-2 w-full"
-            disabled={values.style === "filled"}
+            disabled={values.style !== "outline"}
           />
         </div>
 
