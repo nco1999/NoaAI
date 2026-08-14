@@ -30,7 +30,10 @@ begin
     new.id,
     new.email,
     new.raw_user_meta_data ->> 'full_name',
-    case when (select count(*) from public.profiles) = 0 then 'admin' else 'viewer' end
+    case when (select count(*) from public.profiles) = 0
+      then 'admin'::public.user_role
+      else 'viewer'::public.user_role
+    end
   );
   return new;
 end;
