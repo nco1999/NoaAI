@@ -280,23 +280,55 @@ on conflict (id) do nothing;
 
 -- Objects are stored under `${owner_id}/${asset_id}/...`. Access mirrors the
 -- assets table: owner, org-visibility, or admin. Reads/writes go through the
--- server (service role) after an authorization check, but these policies
--- also let clients read directly when appropriate.
+-- server (the caller's own session-bound client, not service-role) after an
+-- authorization check, but these policies also let clients read directly
+-- when appropriate (e.g. signed URLs from the browser).
+--
+-- The owner-read check is path-based ((storage.foldername(name))[1] =
+-- auth.uid()), NOT routed through the assets table the way org/admin access
+-- is. That's deliberate: uploadAssetFile() uploads a new asset's file
+-- *before* assets.storage_path is set on its row (see POST /api/assets), and
+-- Storage's upload does an INSERT ... RETURNING under the hood — Postgres
+-- applies the SELECT policy to that RETURNING row too. An assets-table-only
+-- policy can never match at that moment (storage_path is still null), so
+-- the very first upload of any asset would fail RLS. Owners can always read
+-- their own folder regardless of assets-table state; cross-user reads
+-- (org-shared, admin) still go through the assets table as before.
 create policy "read storage objects for accessible assets"
   on storage.objects for select
   to authenticated
   using (
     bucket_id = 'assets'
-    and exists (
-      select 1 from assets a
-      where a.storage_path = storage.objects.name
-        and (a.owner_id = auth.uid() or a.visibility = 'org' or is_admin())
+    and (
+      (storage.foldername(name))[1] = auth.uid()::text
+      or is_admin()
+      or exists (
+        select 1 from assets a
+        where a.storage_path = storage.objects.name
+          and a.visibility = 'org'
+      )
     )
   );
 
 create policy "owners can upload storage objects"
   on storage.objects for insert
   to authenticated
+  with check (
+    bucket_id = 'assets'
+    and (storage.foldername(name))[1] = auth.uid()::text
+  );
+
+-- uploadAssetFile() calls .upload(..., { upsert: true }). Every asset gets a
+-- fresh random id, so in practice this is always a plain INSERT — but
+-- upsert:true resolves to an UPDATE on a path collision, which needs its
+-- own policy (the insert policy's WITH CHECK doesn't cover UPDATE).
+create policy "owners can update their own storage objects"
+  on storage.objects for update
+  to authenticated
+  using (
+    bucket_id = 'assets'
+    and (storage.foldername(name))[1] = auth.uid()::text
+  )
   with check (
     bucket_id = 'assets'
     and (storage.foldername(name))[1] = auth.uid()::text

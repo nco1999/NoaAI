@@ -56,12 +56,15 @@ Next.js + Supabase, ואז מודול האייקונים, ואז מודול הר
 ### 1. Supabase
 
 1. צרו פרויקט חדש ב-https://supabase.com
-2. הריצו את המיגרציה שבתיקייה `supabase/migrations/0001_init.sql` (SQL editor בפרויקט, או
-   `supabase db push` אם עובדים עם ה-CLI). היא יוצרת:
-   - `profiles` (role: admin/developer/viewer) + טריגר שיוצר פרופיל אוטומטית בהרשמה
-     (המשתמש הראשון בארגון הופך אוטומטית ל-admin)
-   - `assets`, `tags`, `asset_tags`, `collections`, `collection_assets` + RLS policies
-   - bucket פרטי בשם `assets` ב-Storage, עם policies תואמות
+2. הריצו את כל הקבצים שבתיקייה `supabase/migrations/` **לפי סדר** (SQL editor בפרויקט, או
+   `supabase db push` אם עובדים עם ה-CLI):
+   - `0001_init.sql` יוצר `profiles` (role: admin/developer/viewer) + טריגר שיוצר פרופיל
+     אוטומטית בהרשמה (המשתמש הראשון בארגון הופך אוטומטית ל-admin), `assets`, `tags`,
+     `asset_tags`, `collections`, `collection_assets` + RLS policies, ו-bucket פרטי בשם
+     `assets` ב-Storage עם policies תואמות
+   - `0002_fix_storage_object_read_policy.sql` מתקן באג RLS אמיתי (ראו "פתרון תקלות" למטה) —
+     **חובה להריץ גם אותו** על כל פרויקט שכבר הוקם עם `0001_init.sql` הישן, גם אם ה-DB כבר
+     פעיל. המיגרציה אידמפוטנטית (בטוח להריץ יותר מפעם אחת)
 3. Project Settings → API: העתיקו את ה-URL, ה-anon key וה-service role key
 
 ### 2. משתני סביבה
@@ -183,6 +186,73 @@ Image (gpt-image-2, size מדויק ליחס הגובה-רוחב) → PNG (base6
   אין ערובה שהאזור המבוקש יישאר ריק ב-100% מהמקרים (בניגוד לאייקונים, שם יש ולידציה מבנית
   אמיתית על ה-SVG; לתמונת רקע רסטרית אין דרך שקולה לאכוף "האזור הזה ריק" מלבד הפרומפט עצמו).
 - אין עדיין moderation/content-policy handling מעבר להעברת שגיאת ה-API כפי שהיא מסווגת.
+
+## פתרון תקלות: "new row violates row-level security policy" בשמירת רקע
+
+**התסמין**: generation עובד, אבל שמירה לספרייה נכשלת ב-`POST /api/assets` עם 500 בזמן ה-upload
+ל-Storage, וב-log השרת רואים `new row violates row-level security policy for table "objects"`.
+
+**הסיבה**: מדובר בבאג chicken-and-egg אמיתי ב-RLS, לא בבעיית auth/ownership. ה-policy המקורי
+של `SELECT` על `storage.objects` דרש שורת `assets` תואמת שבה `storage_path` כבר שווה לנתיב
+האובייקט. אבל `uploadAssetFile` מעלה את הקובץ **לפני** ש-`storage_path` מתעדכן (`POST
+/api/assets` קודם יוצר את שורת ה-asset, אז מעלה את הקובץ, ורק אז מעדכן `storage_path`). Supabase
+Storage מבצע את ה-upload כ-`INSERT ... RETURNING`, ו-PostgreSQL מיישם את ה-`SELECT` policy גם על
+השורה שחוזרת מ-`RETURNING` — כך שאף שורת `assets` לא יכלה להתאים באותו רגע (כי `storage_path`
+עדיין `null`), וההעלאה הראשונה של כל asset נכשלה תמיד, גם לרקעים פרטיים וגם למשותפים לארגון.
+
+**התיקון**: `storage/migrations/0002_fix_storage_object_read_policy.sql` (וגם עודכן ב-
+`0001_init.sql` כדי שהקמה חדשה תקבל את הגרסה הנכונה מההתחלה). ה-policy החדש מאפשר לבעלים לקרוא
+תמיד אובייקטים תחת התיקייה שלו (`(storage.foldername(name))[1] = auth.uid()`), **בלי תלות**
+במצב טבלת ה-assets — קריאה חוצה-משתמשים (משותף לארגון / admin) עדיין עוברת דרך טבלת ה-assets
+כמו קודם. RLS נשאר דלוק, ה-bucket נשאר private — שום דבר לא בוטל, רק תוקן ה-policy עצמו. נוספה
+גם policy ל-`UPDATE` (הייתה חסרה לגמרי) עבור המקרה ש-`upsert:true` נתקל בהתנגשות path.
+
+**אימות**: הרצתי migration 0001 המקורי (עם ה-policy הישן) מול Postgres 16 אמיתי מקומי (לא
+Supabase, אבל אותו מנוע RLS) עם סימולציה של `storage.objects`/`auth.uid()`/`storage.foldername`,
+ושחזרתי את השגיאה המדויקת שדיווחת עליה, מילה במילה, בשלב ה-`INSERT ... RETURNING` לרקע פרטי
+**וגם** לרקע משותף לארגון. לאחר מכן הרצתי את אותו תרחיש בדיוק מול ה-policy המתוקן: שמירת רקע
+פרטי הצליחה, קריאה חוזרת של הבעלים הצליחה (מדמה Signed URL/הורדה), משתמש אחר לא הצליח לקרוא
+רקע פרטי, רקע "משותף לארגון" נקרא בהצלחה ע"י משתמש אחר, שמירת אייקון (בלי קובץ בכלל) המשיכה
+לעבוד ללא שינוי, וניסיון של משתמש להעלות/לעדכן קובץ בתיקייה של משתמש אחר נחסם כראוי. גם בדקתי
+של-INSERT policy הקיים אכן יש `(storage.foldername(name))[1] = auth.uid()::text` — הוא היה תקין
+מלכתחילה ולא שונה.
+
+**אם ה-migration לא רץ אוטומטית על הפרויקט הקיים שלך**, הריצי את ה-SQL הבא ב-SQL Editor של
+Supabase (זהה בדיוק לתוכן `0002_fix_storage_object_read_policy.sql`, בטוח להריץ יותר מפעם אחת):
+
+```sql
+drop policy if exists "read storage objects for accessible assets" on storage.objects;
+
+create policy "read storage objects for accessible assets"
+  on storage.objects for select
+  to authenticated
+  using (
+    bucket_id = 'assets'
+    and (
+      (storage.foldername(name))[1] = auth.uid()::text
+      or is_admin()
+      or exists (
+        select 1 from assets a
+        where a.storage_path = storage.objects.name
+          and a.visibility = 'org'
+      )
+    )
+  );
+
+drop policy if exists "owners can update their own storage objects" on storage.objects;
+
+create policy "owners can update their own storage objects"
+  on storage.objects for update
+  to authenticated
+  using (
+    bucket_id = 'assets'
+    and (storage.foldername(name))[1] = auth.uid()::text
+  )
+  with check (
+    bucket_id = 'assets'
+    and (storage.foldername(name))[1] = auth.uid()::text
+  );
+```
 
 ## Roadmap
 
