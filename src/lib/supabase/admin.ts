@@ -1,7 +1,8 @@
 import "server-only";
 import { createClient as createSupabaseClient } from "@supabase/supabase-js";
 import type { Database } from "./types";
-import { supabaseServiceRoleKey, supabaseUrl } from "./env";
+import { supabaseUrl } from "./env";
+import { supabaseServiceRoleKey } from "./server-env";
 
 /**
  * Service-role client. Bypasses Row Level Security entirely — only use it
