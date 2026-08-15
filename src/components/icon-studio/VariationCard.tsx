@@ -63,7 +63,7 @@ export function VariationCard({
   }
 
   return (
-    <div className="flex min-w-0 flex-col gap-3 rounded-xl border border-neutral-200 bg-white p-4 dark:border-neutral-800 dark:bg-neutral-900">
+    <div className="flex w-full min-w-0 max-w-[320px] flex-col gap-3 rounded-xl border border-neutral-200 bg-white p-4 dark:border-neutral-800 dark:bg-neutral-900">
       <div
         className="mx-auto flex h-32 w-32 shrink-0 items-center justify-center rounded-lg bg-neutral-50 [&_svg]:h-16 [&_svg]:w-16 dark:bg-neutral-800"
         style={{ color: previewColor }}

@@ -49,10 +49,12 @@ export function IconStudio() {
   }
 
   return (
-    <div className="grid grid-cols-1 gap-6 lg:grid-cols-[minmax(300px,360px)_1fr]">
+    <div className="space-y-8">
       <IconPromptForm onSubmit={handleGenerate} pending={pending} />
 
-      <div className="min-w-0">
+      <div>
+        <h2 className="mb-3 text-base font-semibold">תוצאות</h2>
+
         {error && (
           <p className="mb-4 rounded-lg bg-red-50 px-3 py-2 text-sm text-red-700 dark:bg-red-950 dark:text-red-300">
             {error}
@@ -60,19 +62,19 @@ export function IconStudio() {
         )}
 
         {variations.length === 0 && !pending && !error && (
-          <div className="flex h-full min-h-64 items-center justify-center rounded-xl border border-dashed border-neutral-300 text-sm text-neutral-400 dark:border-neutral-700">
-            תארי אייקון בטופס משמאל כדי להתחיל
+          <div className="flex min-h-48 items-center justify-center rounded-xl border border-dashed border-neutral-300 text-sm text-neutral-400 dark:border-neutral-700">
+            תארי אייקון למעלה כדי להתחיל
           </div>
         )}
 
         {pending && variations.length === 0 && (
-          <div className="flex h-full min-h-64 items-center justify-center rounded-xl border border-dashed border-neutral-300 text-sm text-neutral-400 dark:border-neutral-700">
+          <div className="flex min-h-48 items-center justify-center rounded-xl border border-dashed border-neutral-300 text-sm text-neutral-400 dark:border-neutral-700">
             יוצר וריאציות...
           </div>
         )}
 
         {params && variations.length > 0 && (
-          <div className="grid max-w-[1340px] grid-cols-[repeat(auto-fit,minmax(260px,320px))] gap-4">
+          <div className="grid max-w-[950px] grid-cols-1 gap-4 sm:grid-cols-[repeat(auto-fit,minmax(220px,1fr))]">
             {variations.map((variation, i) => (
               <VariationCard
                 key={variation.id}
