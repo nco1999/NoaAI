@@ -109,11 +109,16 @@ function extractPngBuffers(json: OpenAIImagesResponse): Buffer[] {
 // Icons — unchanged behavior, just routed through the shared helpers above.
 // ---------------------------------------------------------------------------
 
-// Square source resolution requested from the model. High enough that the
-// vectorizer (see lib/svg/vectorize.ts) has clean edges to trace; the result
-// is rescaled to the icon's own viewBox afterwards, so this number doesn't
-// need to match canvasSize.
-const ICON_SOURCE_SIZE = 1024;
+// Square source resolution requested from the model. The vectorizer (see
+// lib/svg/vectorize.ts) only needs clean flat-color edges to trace, not
+// pixel-level fidelity — the traced result is rescaled to the icon's own
+// viewBox (max 64x64) afterwards regardless of source size. 512 is still
+// 8x-21x the final viewBox and traces just as cleanly as 1024 did; halving
+// it (and dropping quality from "high" to "medium") measurably cuts GPT
+// Image latency, which is what was blowing the request timeout — see
+// generateIconImage() below.
+const ICON_SOURCE_SIZE = 512;
+const ICON_IMAGE_QUALITY = "medium";
 
 function strokeWeightLabel(strokeWidth: number): string {
   if (strokeWidth <= 1.5) return "very thin, delicate";
@@ -156,22 +161,37 @@ export interface GeneratedIconImage {
   png: Buffer;
 }
 
-export async function generateIconImages(params: IconGenerationParams): Promise<GeneratedIconImage[]> {
+/**
+ * Generates exactly ONE icon image per call (n: 1), mirroring
+ * generateBackgroundImage below. Icons used to request all variations
+ * (up to 4) in a single n:4 call, which made GPT Image render them
+ * one-after-another server-side inside OpenAI *before ever responding* —
+ * so the single 90s AbortController budget in callOpenAIImages() had to
+ * cover 4x the work, and routinely tripped. Backgrounds never had this bug
+ * because they always used n: 1 and let the client parallelize via
+ * separate HTTP requests (see BackgroundStudio.tsx) — icons now do the
+ * same (see generateIconVariation() in lib/ai/icon-generation.ts and the
+ * per-slot fetches in IconStudio.tsx).
+ */
+export async function generateIconImage(params: IconGenerationParams): Promise<GeneratedIconImage> {
+  const start = Date.now();
   const json = await callOpenAIImages("https://api.openai.com/v1/images/generations", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({
       model: IMAGE_MODEL,
       prompt: buildIconImagePrompt(params),
-      n: params.variationCount,
+      n: 1,
       size: `${ICON_SOURCE_SIZE}x${ICON_SOURCE_SIZE}`,
-      quality: "high",
+      quality: ICON_IMAGE_QUALITY,
       background: "opaque",
       output_format: "png",
     }),
   });
+  console.log(`[icon-gen] openai generation: ${Date.now() - start}ms`);
 
-  return extractPngBuffers(json).map((png) => ({ png }));
+  const [png] = extractPngBuffers(json);
+  return { png };
 }
 
 // ---------------------------------------------------------------------------

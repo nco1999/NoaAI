@@ -33,11 +33,6 @@ export function parseIconGenerationParams(body: unknown): IconGenerationParams {
     ? (b.canvasSize as IconGenerationParams["canvasSize"])
     : 48;
 
-  const variationCount = Number(b.variationCount);
-  const safeVariationCount = Number.isInteger(variationCount)
-    ? Math.min(Math.max(variationCount, 1), 4)
-    : 4;
-
   return {
     prompt,
     colors,
@@ -45,6 +40,5 @@ export function parseIconGenerationParams(body: unknown): IconGenerationParams {
     style,
     strokeWidth: safeStrokeWidth,
     canvasSize,
-    variationCount: safeVariationCount,
   };
 }

@@ -5,7 +5,16 @@ import type { IconGenerationParams, IconVariation } from "@/lib/supabase/types";
 import { IconPromptForm, type IconFormValues } from "./IconPromptForm";
 import { VariationCard } from "./VariationCard";
 
-async function callGenerateApi(body: Record<string, unknown>): Promise<IconVariation[]> {
+type SlotStatus = "loading" | "done" | "error";
+
+interface VariationSlot {
+  slotId: string;
+  status: SlotStatus;
+  variation?: IconVariation;
+  error?: string;
+}
+
+async function callGenerateApi(body: Record<string, unknown>): Promise<IconVariation> {
   const res = await fetch("/api/generate/icon", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
@@ -13,33 +22,52 @@ async function callGenerateApi(body: Record<string, unknown>): Promise<IconVaria
   });
   const json = await res.json();
   if (!res.ok) throw new Error(json.error ?? "הבקשה נכשלה.");
-  return json.variations;
+  return json.variation as IconVariation;
 }
 
 export function IconStudio() {
   const [params, setParams] = useState<IconGenerationParams | null>(null);
-  const [variations, setVariations] = useState<IconVariation[]>([]);
-  const [pending, setPending] = useState(false);
-  const [error, setError] = useState<string | null>(null);
+  const [slots, setSlots] = useState<VariationSlot[]>([]);
 
-  async function handleGenerate(values: IconFormValues) {
-    setPending(true);
-    setError(null);
+  // Each slot resolves independently — the grid fills in progressively
+  // instead of waiting for the slowest variation in the batch (mirrors
+  // BackgroundStudio's per-slot fetch pattern).
+  async function runSlot(slotId: string, body: Record<string, unknown>) {
+    setSlots((prev) => prev.map((s) => (s.slotId === slotId ? { slotId, status: "loading" } : s)));
     try {
-      const nextParams: IconGenerationParams = { ...values };
-      const result = await callGenerateApi(nextParams);
-      setParams(nextParams);
-      setVariations(result);
+      const variation = await callGenerateApi(body);
+      setSlots((prev) =>
+        prev.map((s) => (s.slotId === slotId ? { slotId, status: "done", variation } : s))
+      );
     } catch (err) {
-      setError((err as Error).message);
-    } finally {
-      setPending(false);
+      setSlots((prev) =>
+        prev.map((s) =>
+          s.slotId === slotId ? { slotId, status: "error", error: (err as Error).message } : s
+        )
+      );
     }
+  }
+
+  function handleGenerate(values: IconFormValues) {
+    const { variationCount, ...nextParams } = values;
+    setParams(nextParams);
+
+    const newSlots: VariationSlot[] = Array.from({ length: variationCount }, () => ({
+      slotId: crypto.randomUUID(),
+      status: "loading",
+    }));
+    setSlots(newSlots);
+    newSlots.forEach((slot) => runSlot(slot.slotId, { mode: "generate", ...nextParams }));
+  }
+
+  function handleRetry(slotId: string) {
+    if (!params) return;
+    runSlot(slotId, { mode: "generate", ...params });
   }
 
   async function handleRefine(currentSvg: string, refinementPrompt: string): Promise<string> {
     if (!params) throw new Error("אין פרמטרים פעילים.");
-    const [variation] = await callGenerateApi({
+    const variation = await callGenerateApi({
       mode: "refine",
       ...params,
       previousSvg: currentSvg,
@@ -48,6 +76,8 @@ export function IconStudio() {
     return variation.svg;
   }
 
+  const pending = slots.some((s) => s.status === "loading");
+
   return (
     <div className="space-y-8">
       <IconPromptForm onSubmit={handleGenerate} pending={pending} />
@@ -55,35 +85,45 @@ export function IconStudio() {
       <div>
         <h2 className="mb-3 text-base font-semibold">תוצאות</h2>
 
-        {error && (
-          <p className="mb-4 rounded-lg bg-red-50 px-3 py-2 text-sm text-red-700 dark:bg-red-950 dark:text-red-300">
-            {error}
-          </p>
-        )}
-
-        {variations.length === 0 && !pending && !error && (
+        {slots.length === 0 && (
           <div className="flex min-h-48 items-center justify-center rounded-xl border border-dashed border-neutral-300 text-sm text-neutral-400 dark:border-neutral-700">
             תארי אייקון למעלה כדי להתחיל
           </div>
         )}
 
-        {pending && variations.length === 0 && (
-          <div className="flex min-h-48 items-center justify-center rounded-xl border border-dashed border-neutral-300 text-sm text-neutral-400 dark:border-neutral-700">
-            יוצר וריאציות...
-          </div>
-        )}
-
-        {params && variations.length > 0 && (
+        {params && slots.length > 0 && (
           <div className="grid max-w-[950px] grid-cols-1 gap-4 sm:grid-cols-[repeat(auto-fit,minmax(220px,1fr))]">
-            {variations.map((variation, i) => (
-              <VariationCard
-                key={variation.id}
-                index={i}
-                svg={variation.svg}
-                params={params}
-                onRefine={handleRefine}
-              />
-            ))}
+            {slots.map((slot, i) =>
+              slot.status === "loading" ? (
+                <div
+                  key={slot.slotId}
+                  className="flex min-h-48 w-full max-w-[320px] items-center justify-center rounded-xl border border-dashed border-neutral-300 text-sm text-neutral-400 dark:border-neutral-700"
+                >
+                  יוצר אייקון...
+                </div>
+              ) : slot.status === "error" ? (
+                <div
+                  key={slot.slotId}
+                  className="flex min-h-48 w-full max-w-[320px] flex-col items-center justify-center gap-2 rounded-xl border border-dashed border-red-300 px-4 text-center text-sm text-red-700 dark:border-red-800 dark:text-red-300"
+                >
+                  <span>{slot.error ?? "יצירת האייקון נכשלה."}</span>
+                  <button
+                    onClick={() => handleRetry(slot.slotId)}
+                    className="rounded-lg border border-red-300 px-3 py-1 text-xs font-medium hover:bg-red-50 dark:border-red-800 dark:hover:bg-red-950"
+                  >
+                    נסי שוב
+                  </button>
+                </div>
+              ) : slot.variation ? (
+                <VariationCard
+                  key={slot.slotId}
+                  index={i}
+                  svg={slot.variation.svg}
+                  params={params}
+                  onRefine={handleRefine}
+                />
+              ) : null
+            )}
           </div>
         )}
       </div>

@@ -2,7 +2,21 @@ import { NextResponse } from "next/server";
 import { getCurrentUser, canCreateAssets } from "@/lib/auth/current-user";
 import { checkRateLimit } from "@/lib/ai/rate-limit";
 import { parseIconGenerationParams } from "@/lib/ai/icon-params";
-import { generateIconVariations, refineIconVariation } from "@/lib/ai/icon-generation";
+import { generateIconVariation, refineIconVariation } from "@/lib/ai/icon-generation";
+
+/**
+ * Generates (or refines) exactly ONE icon variation per call, mirroring
+ * /api/generate/background — the client fires several of these in parallel
+ * (one per requested variation, see IconStudio.tsx) instead of asking the
+ * server to batch them into a single OpenAI n>1 call, which used to share
+ * one 90s timeout across all variations and routinely tripped it.
+ *
+ * maxDuration is set explicitly (Next.js 16 route segment config) so a
+ * hosting platform's default function timeout can't kill the request
+ * before our own 90s-per-OpenAI-call timeout (lib/ai/openai.ts) gets a
+ * chance to return its own clear error message.
+ */
+export const maxDuration = 120;
 
 export async function POST(request: Request) {
   const user = await getCurrentUser();
@@ -45,11 +59,11 @@ export async function POST(request: Request) {
           ? b.refinementPrompt.trim()
           : params.prompt;
       const variation = await refineIconVariation(params, refinementPrompt);
-      return NextResponse.json({ variations: [variation] });
+      return NextResponse.json({ variation });
     }
 
-    const variations = await generateIconVariations(params);
-    return NextResponse.json({ variations });
+    const variation = await generateIconVariation(params);
+    return NextResponse.json({ variation });
   } catch (error) {
     console.error("Icon generation failed", error);
     return NextResponse.json(

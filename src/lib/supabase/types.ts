@@ -20,7 +20,6 @@ export type IconGenerationParams = {
   style: "outline" | "filled" | "duotone";
   strokeWidth: number;
   canvasSize: 24 | 48 | 64;
-  variationCount: number;
 };
 
 export type IconVariation = {

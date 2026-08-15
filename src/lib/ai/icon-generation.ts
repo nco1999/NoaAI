@@ -1,6 +1,6 @@
 import "server-only";
 import type { IconGenerationParams, IconVariation } from "@/lib/supabase/types";
-import { generateIconImages } from "@/lib/ai/openai";
+import { generateIconImage } from "@/lib/ai/openai";
 import { vectorizeIconImage } from "@/lib/svg/vectorize";
 import { validateIconSvg } from "@/lib/svg/validate";
 
@@ -11,18 +11,25 @@ import { validateIconSvg } from "@/lib/svg/validate";
  * why that step is a classic bitmap tracer instead.
  */
 
-async function traceAndValidate(
-  png: Buffer,
-  params: IconGenerationParams
-): Promise<IconVariation | null> {
+/**
+ * Traces one PNG into an SVG and validates it. Throws a distinct, specific
+ * Hebrew message per failing stage instead of a generic one, so the client
+ * can tell "vectorization failed" apart from "validation failed" apart
+ * from an OpenAI-side error/timeout (which throws its own distinct
+ * messages — see classifyOpenAIError in lib/ai/openai.ts).
+ */
+function traceAndValidate(png: Buffer, params: IconGenerationParams): string {
+  const vectorizeStart = Date.now();
   let svg: string;
   try {
     svg = vectorizeIconImage(png, params);
   } catch (error) {
     console.error("Icon vectorization failed", error);
-    return null;
+    throw new Error("הוקטוריזציה של האייקון (המרה ל-SVG) נכשלה. נסי לנסח את הפרומפט מחדש.");
   }
+  console.log(`[icon-gen] vectorization: ${Date.now() - vectorizeStart}ms`);
 
+  const validateStart = Date.now();
   // The vectorizer always outputs currentColor (single tone, or two tones
   // for duotone) regardless of the old multi-literal-color/monochrome
   // toggle — a raster-traced icon is fundamentally a flat-tone silhouette.
@@ -31,27 +38,32 @@ async function traceAndValidate(
     style: params.style,
     monochrome: true,
   });
+  console.log(`[icon-gen] validation: ${Date.now() - validateStart}ms`);
 
   if (!validation.valid) {
     console.error("Vectorized icon failed validation", [
       ...validation.securityErrors,
       ...validation.qualityErrors,
     ]);
-    return null;
+    throw new Error("בדיקת האיכות של האייקון שנוצר נכשלה. נסי לנסח את הפרומפט מחדש או לבחור סגנון אחר.");
   }
 
-  return { id: crypto.randomUUID(), svg };
+  return svg;
 }
 
-export async function generateIconVariations(params: IconGenerationParams): Promise<IconVariation[]> {
-  const images = await generateIconImages(params);
-  const results = await Promise.all(images.map((image) => traceAndValidate(image.png, params)));
-  const variations = results.filter((v): v is IconVariation => v !== null);
-
-  if (variations.length === 0) {
-    throw new Error("יצירת האייקונים נכשלה בשלב הוקטוריזציה/הבדיקה. נסי לנסח את הפרומפט מחדש.");
-  }
-  return variations;
+/**
+ * Generates and traces exactly ONE icon variation. The client (see
+ * IconStudio.tsx) calls POST /api/generate/icon once per requested
+ * variation, in parallel, instead of one call generating every variation —
+ * each card can then display the moment its own request resolves, and one
+ * slow/failed variation can no longer blow a timeout shared with the rest.
+ */
+export async function generateIconVariation(params: IconGenerationParams): Promise<IconVariation> {
+  const totalStart = Date.now();
+  const image = await generateIconImage(params);
+  const svg = traceAndValidate(image.png, params);
+  console.log(`[icon-gen] total request: ${Date.now() - totalStart}ms`);
+  return { id: crypto.randomUUID(), svg };
 }
 
 /**
@@ -64,17 +76,5 @@ export async function refineIconVariation(
   params: IconGenerationParams,
   refinementPrompt: string
 ): Promise<IconVariation> {
-  const refinedParams: IconGenerationParams = {
-    ...params,
-    prompt: `${params.prompt}, ${refinementPrompt}`,
-    variationCount: 1,
-  };
-
-  const [image] = await generateIconImages(refinedParams);
-  const variation = await traceAndValidate(image.png, refinedParams);
-
-  if (!variation) {
-    throw new Error("השיפור נכשל בשלב הוקטוריזציה/הבדיקה. נסי ניסוח אחר.");
-  }
-  return variation;
+  return generateIconVariation({ ...params, prompt: `${params.prompt}, ${refinementPrompt}` });
 }
