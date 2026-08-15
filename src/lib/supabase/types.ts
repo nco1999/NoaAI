@@ -28,6 +28,28 @@ export type IconVariation = {
   svg: string;
 };
 
+export type BackgroundAspectRatio = "16:9" | "4:3" | "1:1" | "9:16";
+export type BackgroundTextZone = "right" | "left" | "center" | "top" | "none";
+export type BackgroundStyle = "minimal" | "geometric" | "gradient" | "tech" | "organic";
+export type BackgroundDensity = "minimal" | "balanced" | "rich";
+
+export type BackgroundGenerationParams = {
+  prompt: string;
+  aspectRatio: BackgroundAspectRatio;
+  textZone: BackgroundTextZone;
+  style: BackgroundStyle;
+  density: BackgroundDensity;
+  color: string | null;
+};
+
+export type BackgroundVariation = {
+  id: string;
+  /** data: URI (base64 PNG) for immediate preview, before it's ever saved to Storage. */
+  dataUrl: string;
+  width: number;
+  height: number;
+};
+
 export type Asset = {
   id: string;
   owner_id: string;

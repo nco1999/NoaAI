@@ -1,7 +1,14 @@
 import { NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
 import { getCurrentUser, canCreateAssets } from "@/lib/auth/current-user";
+import { uploadAssetFile } from "@/lib/supabase/storage";
 import type { AssetType, AssetVisibility } from "@/lib/supabase/types";
+
+const IMAGE_EXTENSION_BY_CONTENT_TYPE: Record<string, string> = {
+  "image/png": "png",
+  "image/jpeg": "jpg",
+  "image/webp": "webp",
+};
 
 const ASSET_TYPES: AssetType[] = ["icon", "background", "outline"];
 const VISIBILITIES: AssetVisibility[] = ["private", "org"];
@@ -127,6 +134,41 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: error?.message ?? "יצירת הנכס נכשלה." }, { status: 500 });
   }
 
+  // Assets backed by a real file (currently: backgrounds) send it as base64
+  // and it lands in Storage here, under the asset's own id. Icons don't set
+  // this — their SVG lives directly in `content`, no Storage needed.
+  const rawImage = typeof body.imageBase64 === "string" ? body.imageBase64 : null;
+  let storagePath: string | null = null;
+
+  if (rawImage) {
+    const contentType =
+      typeof body.imageContentType === "string" && body.imageContentType in IMAGE_EXTENSION_BY_CONTENT_TYPE
+        ? body.imageContentType
+        : "image/png";
+    const extension = IMAGE_EXTENSION_BY_CONTENT_TYPE[contentType];
+    const base64 = rawImage.includes(",") ? rawImage.slice(rawImage.indexOf(",") + 1) : rawImage;
+    const bytes = Buffer.from(base64, "base64");
+
+    try {
+      storagePath = await uploadAssetFile(supabase, user.id, asset.id, `image.${extension}`, bytes, contentType);
+    } catch (uploadError) {
+      console.error("Asset image upload failed", uploadError);
+      await supabase.from("assets").delete().eq("id", asset.id);
+      return NextResponse.json(
+        { error: "השמירה נכשלה בשלב האחסון (Storage). נסי שוב." },
+        { status: 500 }
+      );
+    }
+
+    const { error: updateError } = await supabase
+      .from("assets")
+      .update({ storage_path: storagePath })
+      .eq("id", asset.id);
+    if (updateError) {
+      console.error("Failed to record storage_path on asset", asset.id, updateError);
+    }
+  }
+
   if (tags.length > 0) {
     const tagIds: string[] = [];
     for (const name of tags) {
@@ -148,5 +190,8 @@ export async function POST(request: Request) {
     }
   }
 
-  return NextResponse.json({ asset: { ...asset, tags } }, { status: 201 });
+  return NextResponse.json(
+    { asset: { ...asset, storage_path: storagePath ?? asset.storage_path, tags } },
+    { status: 201 }
+  );
 }

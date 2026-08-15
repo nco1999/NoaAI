@@ -1,18 +1,35 @@
 "use client";
 
 import { useState } from "react";
-import type { IconGenerationParams, AssetVisibility } from "@/lib/supabase/types";
+import type { AssetType, AssetVisibility } from "@/lib/supabase/types";
 
+export interface SaveToLibraryPayload {
+  content?: Record<string, unknown>;
+  imageBase64?: string;
+  imageContentType?: string;
+}
+
+/**
+ * Shared "save to library" form used by both Icon Studio and Background
+ * Studio (previously icon-only) — same asset-creation endpoint, same tags/
+ * visibility UI, just a different payload shape per asset type.
+ */
 export function SaveToLibraryForm({
-  svg,
-  params,
+  assetType,
+  defaultTitle,
+  prompt,
+  generationParams,
+  payload,
   onSaved,
 }: {
-  svg: string;
-  params: IconGenerationParams;
+  assetType: AssetType;
+  defaultTitle: string;
+  prompt: string | null;
+  generationParams: Record<string, unknown>;
+  payload: SaveToLibraryPayload;
   onSaved: () => void;
 }) {
-  const [title, setTitle] = useState(params.prompt.slice(0, 60));
+  const [title, setTitle] = useState(defaultTitle.slice(0, 60));
   const [tags, setTags] = useState("");
   const [visibility, setVisibility] = useState<AssetVisibility>("private");
   const [saving, setSaving] = useState(false);
@@ -28,16 +45,16 @@ export function SaveToLibraryForm({
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          type: "icon",
-          title: title.trim() || "אייקון ללא שם",
-          prompt: params.prompt,
-          generation_params: params,
-          content: { svg },
+          type: assetType,
+          title: title.trim() || "נכס ללא שם",
+          prompt,
+          generation_params: generationParams,
           visibility,
           tags: tags
             .split(",")
             .map((t) => t.trim())
             .filter(Boolean),
+          ...payload,
         }),
       });
       if (!res.ok) {

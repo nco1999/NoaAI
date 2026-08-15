@@ -4,8 +4,9 @@ import { useState } from "react";
 import type { IconGenerationParams } from "@/lib/supabase/types";
 import { sanitizeSvg } from "@/lib/svg/sanitize";
 import { extractColors, replaceColor, bakeCurrentColor, usesCurrentColor } from "@/lib/svg/colorize";
-import { rasterizeSvgToPng, downloadBlob, downloadText } from "@/lib/svg/rasterize";
-import { SaveToLibraryForm } from "./SaveToLibraryForm";
+import { rasterizeSvgToPng } from "@/lib/svg/rasterize";
+import { downloadBlob, downloadText } from "@/lib/download";
+import { SaveToLibraryForm } from "@/components/library/SaveToLibraryForm";
 
 const PNG_SIZES = [128, 256, 512];
 
@@ -135,7 +136,14 @@ export function VariationCard({
         </button>
 
         {showSave && (
-          <SaveToLibraryForm svg={exportSvg} params={params} onSaved={() => setShowSave(false)} />
+          <SaveToLibraryForm
+            assetType="icon"
+            defaultTitle={params.prompt}
+            prompt={params.prompt}
+            generationParams={params}
+            payload={{ content: { svg: exportSvg } }}
+            onSaved={() => setShowSave(false)}
+          />
         )}
 
         <div>

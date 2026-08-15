@@ -33,18 +33,3 @@ export function rasterizeSvgToPng(svg: string, size: number): Promise<Blob> {
     image.src = url;
   });
 }
-
-export function downloadBlob(blob: Blob, filename: string) {
-  const url = URL.createObjectURL(blob);
-  const a = document.createElement("a");
-  a.href = url;
-  a.download = filename;
-  document.body.appendChild(a);
-  a.click();
-  a.remove();
-  URL.revokeObjectURL(url);
-}
-
-export function downloadText(text: string, filename: string, mime = "image/svg+xml") {
-  downloadBlob(new Blob([text], { type: mime }), filename);
-}

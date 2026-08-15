@@ -4,8 +4,8 @@
 עם ריבוי משתמשים והרשאות, ספרייה משותפת, והיסטוריית יצירה.
 
 זהו שלד עבודה (MVP) הבנוי לפי מסלול הפיתוח המומלץ באפיון: קודם סכימת DB ותשתית
-Next.js + Supabase, ואז מודול האייקונים בנוי end-to-end. מודולי הרקעים והמתווים
-הם עדיין "בקרוב" — הבא בתור.
+Next.js + Supabase, ואז מודול האייקונים, ואז מודול הרקעים — שניהם end-to-end. מודול
+המתווים/מערכי השיעור עדיין "בקרוב" — הבא בתור.
 
 ## Stack
 
@@ -36,9 +36,20 @@ Next.js + Supabase, ואז מודול האייקונים בנוי end-to-end. מ
   - שמירה לספרייה עם תגיות ורמת שיתוף (פרטי / משותף לארגון)
   - ולידציה אמיתית בצד השרת (`lib/svg/validate.ts`): whitelist תגיות/attributes, בדיקת
     viewBox/טווח קואורדינטות/תקציב אלמנטים, איסור script/event handlers/URLs חיצוניים
-- **ספריית נכסים** — חיפוש, סינון לפי סוג/scope, תצוגת gallery
+- **מודול רקעים (end-to-end)** — רקעי מצגת מקצועיים, לא illustration:
+  - פרומפט טקסטואלי, יחס גובה-רוחב (16:9 ברירת מחדל שמתאים ישירות לשקופיית PowerPoint/Slides,
+    גם 4:3/1:1/9:16), אזור פנוי לטקסט (ימין/שמאל/מרכז/עליון/ללא העדפה — מתורגם להנחיית
+    קומפוזיציה), סגנון, רמת עומס, צבע מוביל אופציונלי, 1–4 וריאציות
+  - כל וריאציה נוצרת בקריאה **נפרדת ומקבילית** ומוצגת ברגע שהיא מוכנה (לא ממתינים לכל הסבב) —
+    כל כרטיס עם loading state עצמאי
+  - שמירה לספרייה מעלה קובץ תמונה אמיתי ל-Supabase Storage (לא URL זמני של הספק)
+  - הורדה, יצירה מחדש, refine (מבוסס על `images/edit` של OpenAI כשאפשר — עורך את התמונה
+    הקיימת בפועל, לא מייצר מחדש מאפס), הוספת וריאציה
+  - הודעות שגיאה קריאות (API key / quota / timeout / content policy) — לא JSON גולמי
+- **ספריית נכסים** — חיפוש, סינון לפי סוג/scope, תצוגת gallery; רקעים מוצגים כתמונה אמיתית
+  (Signed URL פרטי מה-Storage), לא רק תווית
 - **ניהול משתמשים** — Admin יכול לראות ולשנות הרשאות
-- **מודולי רקעים ומתווים** — placeholder בלבד, לשלב הבא
+- **מודול מתווים/מערכי שיעור** — placeholder בלבד, לשלב הבא
 
 ## הרצה מקומית
 
@@ -84,18 +95,23 @@ npm run lint    # eslint
 src/
   app/
     (dashboard)/        # מוגן ב-auth: icons, backgrounds, outlines, library, admin
-    api/                # /api/generate/icon, /api/assets
+    api/                # /api/generate/icon, /api/generate/background, /api/assets
     login/ signup/ auth/ # מסכי אימות (Supabase Auth)
   components/
-    icon-studio/        # טופס פרומפט, כרטיסי וריאציה, שמירה לספרייה
-    library/            # גלריית הנכסים
+    icon-studio/        # טופס פרומפט, כרטיסי וריאציה
+    background-studio/  # טופס פרומפט, כרטיסי תוצאה (loading/error/done per slot)
+    library/            # גלריית הנכסים, SaveToLibraryForm המשותף (אייקונים+רקעים)
     layout/ admin/ ui/
   lib/
-    ai/                 # OpenAI Image API call + prompt builder, rate limiting
-    svg/                # vectorize (raster→SVG), validate, normalize, sanitize,
-                         # colorize (client-side recolor), rasterize (PNG export)
-    supabase/           # קליינטים (browser/server/admin), טיפוסי DB
+    ai/                 # openai.ts (OpenAI Image API, משותף לאייקונים+רקעים),
+                         # icon-generation.ts, icon-params.ts, background-params.ts,
+                         # rate-limiting
+    svg/                # vectorize (raster→SVG לאייקונים), validate, normalize,
+                         # sanitize, colorize (client-side recolor), rasterize (PNG export)
+    supabase/           # קליינטים (browser/server/admin), storage.ts (upload), טיפוסי DB
     auth/                # current user + role helpers
+    download.ts          # הורדת קבצים בצד לקוח (משותף)
+    background-aspect.ts # מיפוי יחס-גובה-רוחב ↔ CSS aspect-ratio
 supabase/migrations/     # סכימת ה-DB וה-RLS
 ```
 
@@ -129,13 +145,51 @@ outline, דואוטון) שנוצרו ידנית — לא מול הפלט האמ
 4. הרצת דגם segmentation (כגון rembg/SAM) לפני ה-vectorization כדי לנקות רקע/artifacts טוב
    יותר מסף-צבע פשוט, אם GPT Image ימשיך להחזיר רעש ברקע גם עם prompt "flat white background".
 
+## מודול רקעים — הערות טכניות
+
+**Generation pipeline**: `prompt + controls → buildBackgroundPrompt (lib/ai/openai.ts) → GPT
+Image (gpt-image-2, size מדויק ליחס הגובה-רוחב) → PNG (base64) → תצוגה מקדימה מיידית בדפדפן`.
+כל וריאציה היא קריאה **נפרדת** ל-`/api/generate/background` (לא batch יחיד עם `n`), כי המטרה
+הייתה שכל כרטיס יתעדכן ברגע שהוא מוכן — עם קריאה אחת מרובת-תמונות כל הכרטיסים ממתינים יחד
+לתגובה אחת. הקליינט (`BackgroundStudio.tsx`) יורה N בקשות מקביליות ומעדכן state per-slot
+כשכל אחת מתיישבת (resolve/reject) בנפרד — לא streaming protocol, רק fetch מקביל רגיל.
+
+**גדלים לפי יחס**: `16:9→1536x864, 4:3→1536x1152, 1:1→1024x1024, 9:16→864x1536` — כל המידות
+מתחלקות ב-16 ובאותו יחס בדיוק (gpt-image-2 תומך ב-WIDTHxHEIGHT חופשי בתנאים אלו), כך ש-16:9
+נכנס לשקופיית PowerPoint רחבה בלי crop.
+
+**Refine**: קורא ל-`POST /v1/images/edits` עם התמונה הקיימת (multipart/form-data) ופרומפט
+שינוי ממוקד — זו עריכת-תמונה אמיתית של OpenAI, לא regeneration מאפס, כדי לשמור המשכיות
+ויזואלית עם המקור. אם קריאת ה-edit נכשלת מכל סיבה, יש נפילה אוטומטית ל-generation מלא עם
+הפרומפט המקורי + טקסט השיפור (כדי ש-refine לעולם לא ייכשל רק כי endpoint העריכה לא זמין).
+
+**שמירה ל-Library**: `POST /api/assets` (אותו endpoint של אייקונים) מקבל `imageBase64` —
+לאחר יצירת שורת ה-asset מעלה את הקובץ ל-Storage תחת `${owner_id}/${asset_id}/image.png`
+(אותה תשתית RLS/bucket שכבר קיימת לאייקונים) ומעדכן את `storage_path`. כישלון העלאה מוחק את
+השורה שנוצרה כדי לא להשאיר asset "שבור" בלי קובץ. הצגה/הורדה מה-Library משתמשות ב-Signed URL
+שנוצר ישירות מהדפדפן (`supabase.storage.from('assets').createSignedUrl(...)`) — לא נדרש route
+נוסף בשרת, כי ה-RLS policies על `storage.objects` שכבר קיימות מאפשרות את זה ישירות.
+
+**מגבלת בדיקה**: אין `OPENAI_API_KEY` פעיל בסביבת הפיתוח הזו — לא הרצתי קריאה חיה ל-GPT Image
+או ל-`images/edit`, ולכן לא בדקתי בפועל את 6 הפרומפטים המבוקשים מול המודל האמיתי. מה שכן
+נבדק בפועל: כל שכבת ה-UI (טפסים, responsive grid, loading/error states per-card, RTL) מול
+נתוני מוק אמיתיים דרך React הריאלי (לא רק code review) — ראו היסטוריית ה-commits. יש להריץ את
+6 הפרומפטים ידנית ברגע שיש מפתח, ולוודא בעין את איכות ה-composition/negative space בפועל.
+
+**Limitations נוספות**:
+- כל וריאציה = קריאה נפרדת ל-OpenAI (לא batch) — עלות/latency גבוהים יותר מקריאת `n` יחידה,
+  אבל זה המחיר של progressive reveal אמיתי.
+- ה-`textZone`/`style`/`density`/`color` הם הנחיות טקסטואליות למודל, לא אילוץ גאומטרי מוחלט —
+  אין ערובה שהאזור המבוקש יישאר ריק ב-100% מהמקרים (בניגוד לאייקונים, שם יש ולידציה מבנית
+  אמיתית על ה-SVG; לתמונת רקע רסטרית אין דרך שקולה לאכוף "האזור הזה ריק" מלבד הפרומפט עצמו).
+- אין עדיין moderation/content-policy handling מעבר להעברת שגיאת ה-API כפי שהיא מסווגת.
+
 ## Roadmap
 
 1. ~~סכימת DB + שלד Next.js/Supabase~~
 2. ~~מודול אייקוני SVG end-to-end (Claude-authored SVG)~~
 3. ~~מודול אייקוני SVG: מעבר ל-hybrid pipeline (GPT Image + vectorization)~~
-4. מודול רקעים (GPT Image, יחסי גובה-רוחב, וריאציות) — התשתית (`lib/ai/openai.ts`) כבר קיימת
+4. ~~מודול רקעים end-to-end (GPT Image + Storage + Library)~~
 5. מודול מתווים/מערכי שיעור (פלט מובנה, עורך עשיר, ייצוא Word/PDF/Markdown)
 6. עמוד Admin מורחב: מפתחות API, מעקב עלויות/שימוש
-7. Session refresh אוטומטי (proxy.ts) אם נדרש רענון בכל בקשה, ו-storage signed URLs
-   לקבצי רקע/ייצוא גדולים
+7. Session refresh אוטומטי (proxy.ts) אם נדרש רענון בכל בקשה
