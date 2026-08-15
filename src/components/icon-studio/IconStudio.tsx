@@ -49,10 +49,10 @@ export function IconStudio() {
   }
 
   return (
-    <div className="grid grid-cols-1 gap-6 lg:grid-cols-[360px_1fr]">
+    <div className="grid grid-cols-1 gap-6 lg:grid-cols-[minmax(300px,360px)_1fr]">
       <IconPromptForm onSubmit={handleGenerate} pending={pending} />
 
-      <div>
+      <div className="min-w-0">
         {error && (
           <p className="mb-4 rounded-lg bg-red-50 px-3 py-2 text-sm text-red-700 dark:bg-red-950 dark:text-red-300">
             {error}
@@ -72,7 +72,7 @@ export function IconStudio() {
         )}
 
         {params && variations.length > 0 && (
-          <div className="grid grid-cols-2 gap-4 sm:grid-cols-3 xl:grid-cols-4">
+          <div className="grid max-w-[1340px] grid-cols-[repeat(auto-fit,minmax(260px,320px))] gap-4">
             {variations.map((variation, i) => (
               <VariationCard
                 key={variation.id}

@@ -62,9 +62,9 @@ export function VariationCard({
   }
 
   return (
-    <div className="flex flex-col gap-3 rounded-xl border border-neutral-200 bg-white p-4 dark:border-neutral-800 dark:bg-neutral-900">
+    <div className="flex min-w-0 flex-col gap-3 rounded-xl border border-neutral-200 bg-white p-4 dark:border-neutral-800 dark:bg-neutral-900">
       <div
-        className="mx-auto flex h-32 w-32 items-center justify-center rounded-lg bg-neutral-50 [&_svg]:h-16 [&_svg]:w-16 dark:bg-neutral-800"
+        className="mx-auto flex h-32 w-32 shrink-0 items-center justify-center rounded-lg bg-neutral-50 [&_svg]:h-16 [&_svg]:w-16 dark:bg-neutral-800"
         style={{ color: previewColor }}
         dangerouslySetInnerHTML={{ __html: safePreview }}
       />
@@ -96,61 +96,69 @@ export function VariationCard({
         )
       )}
 
-      <div className="grid grid-cols-2 gap-2 text-xs">
-        <button
-          onClick={handleDownloadSvg}
-          className="rounded-lg border border-neutral-300 py-1.5 font-medium hover:bg-neutral-50 dark:border-neutral-700 dark:hover:bg-neutral-800"
-        >
-          הורדת SVG
-        </button>
-        <button
-          onClick={handleCopyCode}
-          className="rounded-lg border border-neutral-300 py-1.5 font-medium hover:bg-neutral-50 dark:border-neutral-700 dark:hover:bg-neutral-800"
-        >
-          העתקת קוד
-        </button>
-        {PNG_SIZES.map((size) => (
+      <div className="flex min-w-0 flex-col gap-3 text-xs">
+        <div className="grid grid-cols-2 gap-2">
           <button
-            key={size}
-            onClick={() => handleDownloadPng(size)}
-            className="rounded-lg border border-neutral-300 py-1.5 font-medium hover:bg-neutral-50 dark:border-neutral-700 dark:hover:bg-neutral-800"
+            onClick={handleDownloadSvg}
+            className="min-w-0 rounded-lg border border-neutral-300 px-2 py-1.5 font-medium hover:bg-neutral-50 dark:border-neutral-700 dark:hover:bg-neutral-800"
           >
-            PNG {size}px
+            הורדת SVG
           </button>
-        ))}
+          <button
+            onClick={handleCopyCode}
+            className="min-w-0 rounded-lg border border-neutral-300 px-2 py-1.5 font-medium hover:bg-neutral-50 dark:border-neutral-700 dark:hover:bg-neutral-800"
+          >
+            העתקת קוד
+          </button>
+        </div>
+
+        <div>
+          <p className="mb-1.5 text-[11px] font-medium text-neutral-400">ייצוא PNG</p>
+          <div className="grid grid-cols-3 gap-2">
+            {PNG_SIZES.map((size) => (
+              <button
+                key={size}
+                onClick={() => handleDownloadPng(size)}
+                className="min-w-0 rounded-lg border border-neutral-300 px-1 py-1.5 font-medium hover:bg-neutral-50 dark:border-neutral-700 dark:hover:bg-neutral-800"
+              >
+                {size}px
+              </button>
+            ))}
+          </div>
+        </div>
+
         <button
           onClick={() => setShowSave((s) => !s)}
-          className="rounded-lg bg-neutral-900 py-1.5 font-medium text-white hover:bg-neutral-700 dark:bg-neutral-50 dark:text-neutral-900"
+          className="w-full rounded-lg bg-neutral-900 px-2 py-1.5 font-medium text-white hover:bg-neutral-700 dark:bg-neutral-50 dark:text-neutral-900"
         >
           שמירה לספרייה
         </button>
-      </div>
 
-      <div className="flex gap-2">
-        <input
-          type="text"
-          placeholder="שיפור: לדוגמה 'עגול יותר'"
-          value={refinePrompt}
-          onChange={(e) => setRefinePrompt(e.target.value)}
-          className="flex-1 rounded-lg border border-neutral-300 px-2 py-1.5 text-xs outline-none focus:border-neutral-500 dark:border-neutral-700 dark:bg-neutral-800"
-        />
-        <button
-          onClick={handleRefine}
-          disabled={refining || !refinePrompt.trim()}
-          className="rounded-lg border border-neutral-300 px-3 py-1.5 text-xs font-medium hover:bg-neutral-50 disabled:opacity-50 dark:border-neutral-700 dark:hover:bg-neutral-800"
-        >
-          {refining ? "..." : "שכתוב"}
-        </button>
-      </div>
-      {refineError && <p className="text-xs text-red-600">{refineError}</p>}
+        {showSave && (
+          <SaveToLibraryForm svg={exportSvg} params={params} onSaved={() => setShowSave(false)} />
+        )}
 
-      {showSave && (
-        <SaveToLibraryForm
-          svg={exportSvg}
-          params={params}
-          onSaved={() => setShowSave(false)}
-        />
-      )}
+        <div>
+          <p className="mb-1.5 text-[11px] font-medium text-neutral-400">שיפור</p>
+          <div className="flex flex-wrap gap-2">
+            <input
+              type="text"
+              placeholder="לדוגמה: 'עגול יותר'"
+              value={refinePrompt}
+              onChange={(e) => setRefinePrompt(e.target.value)}
+              className="min-w-0 flex-1 basis-32 rounded-lg border border-neutral-300 px-2 py-1.5 outline-none focus:border-neutral-500 dark:border-neutral-700 dark:bg-neutral-800"
+            />
+            <button
+              onClick={handleRefine}
+              disabled={refining || !refinePrompt.trim()}
+              className="shrink-0 rounded-lg border border-neutral-300 px-3 py-1.5 font-medium hover:bg-neutral-50 disabled:opacity-50 dark:border-neutral-700 dark:hover:bg-neutral-800"
+            >
+              {refining ? "..." : "שכתוב"}
+            </button>
+          </div>
+          {refineError && <p className="mt-1.5 text-red-600">{refineError}</p>}
+        </div>
+      </div>
     </div>
   );
 }
